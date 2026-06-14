@@ -1,0 +1,549 @@
+---
+title: "vizathon"
+author: "Raj Barai"
+date: "2025-11-04"
+---
+
+```{r}
+library(readr)
+StormEvents <- read_csv("StormEvents.csv")
+View(StormEvents)
+```
+
+```{r}
+head(StormEvents)
+```
+
+```{r}
+str(StormEvents)
+```
+
+```{r}
+colnames(StormEvents)
+```
+
+```{r}
+dim(StormEvents)
+```
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+# Use the StormEvents data object
+data <- StormEvents
+```
+
+```{r}
+print("Available objects in your environment:")
+print(ls())
+```
+
+```{r}
+# 1. Count total NAs per column
+na_per_column <- data %>%
+  summarise(across(everything(), ~sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "na_count") %>%
+  mutate(na_percentage = round(na_count / nrow(data) * 100, 2)) %>%
+  arrange(desc(na_count))
+
+print(na_per_column)
+```
+
+```{r}
+# Create a cleaned dataset based on your analysis needs
+# For example, focusing on events with location data:
+storms_with_location <- StormEvents %>%
+  filter(!is.na(BEGIN_LAT) & !is.na(BEGIN_LON))
+
+# Or create a dataset for specific event types:
+tornadoes <- StormEvents %>%
+  filter(str_detect(EVENT_TYPE, "Tornado"))
+```
+
+```{r}
+# Exploratory Data Analysis for Storm Events
+library(tidyverse)
+library(scales)
+library(gridExtra)
+```
+
+```{r}
+# 1) TOP EVENT TYPES ANALYSIS
+# Most common event types
+top_events <- StormEvents %>%
+  count(EVENT_TYPE, sort = TRUE) %>%
+  slice_head(n = 15) %>%
+  mutate(EVENT_TYPE = fct_reorder(EVENT_TYPE, n))
+
+p1 <- ggplot(top_events, aes(x = n, y = EVENT_TYPE)) +
+  geom_bar(stat = "identity", fill = "#27408B") +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3) +
+  labs(title = "Top 15 Most Common Storm Event Types",
+       x = "Number of Events", y = "") +
+  theme_minimal() +
+  scale_x_continuous(labels = comma, expand = c(0.1, 0))
+
+print(p1)
+```
+
+```{r}
+# 2) TEMPORAL ANALYSIS
+# Events over time
+yearly_events <- StormEvents %>%
+  group_by(YEAR) %>%
+  summarise(
+    total_events = n(),
+    events_with_deaths = sum(DEATHS_DIRECT > 0),
+    events_with_injuries = sum(INJURIES_DIRECT > 0),
+    total_deaths = sum(DEATHS_DIRECT),
+    total_injuries = sum(INJURIES_DIRECT)
+  )
+
+p2 <- ggplot(yearly_events, aes(x = YEAR, y = total_events)) +
+  geom_line(size = 1.2, color = "#27408B") +
+  geom_smooth(method = "loess", se = TRUE, alpha = 0.2) +
+  labs(title = "Storm Events Over Time (1958-Present)",
+       x = "Year", y = "Number of Events") +
+  theme_minimal() +
+  scale_y_continuous(labels = comma)
+
+print(p2)
+
+```
+
+```{r}
+# Monthly distribution
+monthly_events <- StormEvents %>%
+  mutate(MONTH_NUM = match(MONTH_NAME, month.name)) %>%
+  group_by(MONTH_NUM, MONTH_NAME) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  mutate(MONTH_NAME = fct_reorder(MONTH_NAME, MONTH_NUM))
+
+p3 <- ggplot(monthly_events, aes(x = MONTH_NAME, y = count)) +
+  geom_bar(stat = "identity", fill = "#CD6600") +
+  labs(title = "Storm Events by Month (All Years)",
+       x = "Month", y = "Number of Events") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(labels = comma)
+
+print(p3)
+
+```
+
+```{r}
+# 3. GEOGRAPHIC ANALYSIS
+# Top 20 states by event count
+state_summary <- StormEvents %>%
+  group_by(STATE) %>%
+  summarise(
+    total_events = n(),
+    total_deaths = sum(DEATHS_DIRECT + DEATHS_INDIRECT),
+    total_injuries = sum(INJURIES_DIRECT + INJURIES_INDIRECT),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_events)) %>%
+  slice_head(n = 20)
+
+p4 <- ggplot(state_summary, aes(x = reorder(STATE, total_events), y = total_events)) +
+  geom_bar(stat = "identity", fill = "#27408B") +
+  coord_flip() +
+  labs(title = "Top 20 States by Number of Storm Events",
+       x = "", y = "Number of Events") +
+  theme_minimal() +
+  scale_y_continuous(labels = comma)
+
+print(p4)
+```
+
+```{r}
+# Deadliest event types
+deadly_events <- StormEvents %>%
+  group_by(EVENT_TYPE) %>%
+  summarise(
+    total_deaths = sum(DEATHS_DIRECT + DEATHS_INDIRECT),
+    total_injuries = sum(INJURIES_DIRECT + INJURIES_INDIRECT),
+    event_count = n(),
+    .groups = "drop"
+  ) %>%
+  filter(total_deaths > 0) %>%
+  arrange(desc(total_deaths)) %>%
+  slice_head(n = 10)
+
+p5 <- ggplot(deadly_events, aes(x = reorder(EVENT_TYPE, total_deaths), y = total_deaths)) +
+  geom_bar(stat = "identity", fill = "#CD6600") +
+  coord_flip() +
+  labs(title = "Top 10 Deadliest Storm Event Types",
+       x = "", y = "Total Deaths") +
+  theme_minimal()
+
+print(p5)
+```
+
+```{r}
+# 5. TORNADO-SPECIFIC ANALYSIS 
+tornado_scale <- tornadoes %>%
+    filter(!is.na(TOR_F_SCALE) & TOR_F_SCALE != "NA") %>%
+    count(TOR_F_SCALE) %>%
+    mutate(TOR_F_SCALE = factor(TOR_F_SCALE,
+                                levels = c("EF0", "EF1", "EF2", "EF3", "EF4", "EF5",
+                                         "F0", "F1", "F2", "F3", "F4", "F5")))
+  
+print(tornado_scale)
+
+```
+
+```{r}
+p6 <- ggplot(tornado_scale, aes(x = TOR_F_SCALE, y = n)) +
+    geom_bar(stat = "identity", fill = "#27408B") +
+    labs(title = "Tornado Distribution by F/EF Scale",
+         x = "F/EF Scale", y = "Number of Tornadoes") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  print(p6)
+```
+
+```{r}
+# Tornado trends over time
+  tornado_yearly <- tornadoes %>%
+    group_by(YEAR) %>%
+    summarise(
+      count = n(),
+      deaths = sum(DEATHS_DIRECT),
+      .groups = "drop"
+    )
+  
+  p7 <- ggplot(tornado_yearly, aes(x = YEAR, y = count)) +
+    geom_line(size = 1, color = "#CD6600") +
+    geom_smooth(method = "loess", se = TRUE, alpha = 0.2) +
+    labs(title = "Tornado Events Over Time",
+         x = "Year", y = "Number of Tornadoes") +
+    theme_minimal()
+  
+  print(p7)
+
+```
+
+```{r}
+# Geographic Mapping Analysis for Storm Events
+library(tidyverse)
+library(maps)
+install.packages("mapdata")
+library(mapdata)
+library(ggplot2)
+library(viridis)
+library(sf)
+library(scales)
+```
+
+```{r}
+# 4) Get US state map data
+us_states <- map_data("state")
+```
+
+```{r}
+# Prepare storm data by state
+state_storm_summary <- StormEvents %>%
+  mutate(region = tolower(STATE)) %>%
+  group_by(region) %>%
+  summarise(
+    total_events = n(),
+    total_deaths = sum(DEATHS_DIRECT + DEATHS_INDIRECT),
+    total_injuries = sum(INJURIES_DIRECT + INJURIES_INDIRECT),
+    tornado_count = sum(EVENT_TYPE == "Tornado"),
+    events_per_year = n() / n_distinct(StormEvents$YEAR),
+    .groups = "drop"
+  )
+
+# Merge with map data
+map_data_storms <- us_states %>%
+  left_join(state_storm_summary, by = "region")
+```
+
+```{r}
+# Create choropleth map - Total Events
+p8 <- ggplot(map_data_storms, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = total_events), color = "white", size = 0.2) +
+  scale_fill_gradient2(
+    name = "Total Events",
+    low = "#27408B",      # Not severe
+    high = "#CD6600",     # Severe
+    midpoint = median(state_storm_summary$total_events, na.rm = TRUE),
+    labels = comma
+  ) +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  theme_void() +
+  labs(title = "Total Storm Events by State (1958-Present)",
+       subtitle = "Orange indicates higher storm activity, Blue indicates lower activity") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+print(p8)
+```
+```{r}
+# Calculate severity metrics INCLUDING pct_severe
+state_storm_summary <- StormEvents %>%
+  mutate(
+    region = tolower(STATE),
+    is_severe = (DEATHS_DIRECT > 0 | DEATHS_INDIRECT > 0 | 
+                INJURIES_DIRECT > 0 | INJURIES_INDIRECT > 0 |
+                EVENT_TYPE %in% c("Tornado", "Hurricane", "Tropical Storm"))
+  ) %>%
+  group_by(region) %>%
+  summarise(
+    total_events = n(),
+    severe_events = sum(is_severe),
+    pct_severe = (severe_events / total_events) * 100,  # THIS IS THE MISSING COLUMN
+    total_deaths = sum(DEATHS_DIRECT + DEATHS_INDIRECT),
+    total_injuries = sum(INJURIES_DIRECT + INJURIES_INDIRECT),
+    .groups = "drop"
+  )
+```
+
+```{r}
+# Merge with map data
+map_data_storms <- us_states %>%
+  left_join(state_storm_summary, by = "region")
+```
+
+```{r}
+# Severity Categories with discrete colors
+map_data_storms_cat <- map_data_storms %>%
+  mutate(
+    severity_category = case_when(
+      total_events < quantile(state_storm_summary$total_events, 0.25, na.rm = TRUE) ~ "Low Activity",
+      total_events < quantile(state_storm_summary$total_events, 0.50, na.rm = TRUE) ~ "Moderate Activity",
+      total_events < quantile(state_storm_summary$total_events, 0.75, na.rm = TRUE) ~ "High Activity",
+      TRUE ~ "Severe Activity"
+    ),
+    severity_category = factor(severity_category, 
+                              levels = c("Low Activity", "Moderate Activity", 
+                                       "High Activity", "Severe Activity"))
+  )
+
+p9 <- ggplot(map_data_storms_cat, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = severity_category), color = "white", size = 0.2) +
+  scale_fill_manual(
+    name = "Storm Activity Level",
+    values = c("Low Activity" = "#27408B",       # Blue
+              "Moderate Activity" = "#4682B4",    # Lighter blue
+              "High Activity" = "#CD853F",        # Light orange
+              "Severe Activity" = "#CD6600")      # Dark orange
+  ) +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  theme_void() +
+  labs(title = "Storm Activity Categories by State",
+       subtitle = "Based on total storm event counts (quartiles)") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+print(p9)
+```
+
+```{r}
+#Fatality-based severity map
+p10 <- ggplot(map_data_storms, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = total_deaths), color = "white", size = 0.2) +
+  scale_fill_gradient(
+    name = "Total\nDeaths",
+    low = "#27408B",      # Low fatalities (blue)
+    high = "#CD6600",     # High fatalities (orange)
+    trans = "sqrt",       # Square root transformation for better visualization
+    labels = comma
+  ) +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  theme_void() +
+  labs(title = "Storm Fatalities by State",
+       subtitle = "Cumulative storm-related deaths (Orange = More Deaths, Blue = Fewer Deaths)") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+print(p10)
+```
+
+```{r}
+# Combined severity score
+map_data_storms_score <- map_data_storms %>%
+  group_by(region) %>%
+  mutate(
+    # Create a normalized severity score (0-100)
+    events_norm = (total_events - min(state_storm_summary$total_events, na.rm = TRUE)) / 
+                  (max(state_storm_summary$total_events, na.rm = TRUE) - 
+                   min(state_storm_summary$total_events, na.rm = TRUE)) * 100,
+    deaths_norm = (total_deaths - min(state_storm_summary$total_deaths, na.rm = TRUE)) / 
+                  (max(state_storm_summary$total_deaths, na.rm = TRUE) - 
+                   min(state_storm_summary$total_deaths, na.rm = TRUE)) * 100,
+    severity_score = (events_norm * 0.5 + deaths_norm * 0.5)  # Weighted average
+  ) %>%
+  ungroup()
+
+p11 <- ggplot(map_data_storms_score, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = severity_score), color = "white", size = 0.2) +
+  scale_fill_gradient(
+    name = "Severity\nScore",
+    low = "#27408B",      # Low severity (blue)
+    high = "#CD6600",     # High severity (orange)
+    labels = function(x) round(x, 0)
+  ) +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  theme_void() +
+  labs(title = "Combined Storm Severity Score by State") +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+print(p11)
+```
+
+```{r}
+# 5) SUMMARY STATISTICS
+# Overall statistics
+overall_stats <- StormEvents %>%
+  summarise(
+    total_events = n(),
+    events_with_deaths = sum(DEATHS_DIRECT + DEATHS_INDIRECT > 0),
+    events_with_injuries = sum(INJURIES_DIRECT + INJURIES_INDIRECT > 0),
+    total_deaths = sum(DEATHS_DIRECT + DEATHS_INDIRECT),
+    total_injuries = sum(INJURIES_DIRECT + INJURIES_INDIRECT),
+    year_range = paste(min(YEAR), "-", max(YEAR))
+  )
+
+print(overall_stats)
+```
+
+```{r}
+# Event type diversity
+print(paste("Unique Event Types:", n_distinct(StormEvents$EVENT_TYPE)))
+print(paste("Unique States:", n_distinct(StormEvents$STATE)))
+print(paste("Events with Location Data:", nrow(storms_with_location), 
+            "(", round(nrow(storms_with_location)/nrow(StormEvents)*100, 1), "%)"))
+print(paste("Tornado Events:", nrow(tornadoes), 
+            "(", round(nrow(tornadoes)/nrow(StormEvents)*100, 1), "%)"))
+```
+
+```{r}
+# Deadliest single events
+deadliest_single <- StormEvents %>%
+  mutate(total_deaths = DEATHS_DIRECT + DEATHS_INDIRECT) %>%
+  filter(total_deaths > 0) %>%
+  arrange(desc(total_deaths)) %>%
+  select(EVENT_ID, STATE, EVENT_TYPE, BEGIN_DATE_TIME, total_deaths) %>%
+  slice_head(n = 5)
+
+print(deadliest_single)
+```
+
+```{r}
+# Events with most injuries
+most_injuries <- StormEvents %>%
+  mutate(total_injuries = INJURIES_DIRECT + INJURIES_INDIRECT) %>%
+  filter(total_injuries > 0) %>%
+  arrange(desc(total_injuries)) %>%
+  select(EVENT_ID, STATE, EVENT_TYPE, BEGIN_DATE_TIME, total_injuries) %>%
+  slice_head(n = 5)
+
+print(most_injuries)
+```
+
+```{r}
+# 6) DATA QUALITY INSIGHTS
+# Check for data collection changes
+data_changes <- StormEvents %>%
+  group_by(YEAR) %>%
+  summarise(
+    events = n(),
+    unique_types = n_distinct(EVENT_TYPE),
+    pct_with_location = mean(!is.na(BEGIN_LAT)) * 100,
+    .groups = "drop"
+  )
+```
+
+```{r}
+# Find potential data collection change points
+major_changes <- data_changes %>%
+  mutate(
+    event_change = events - lag(events),
+    pct_change = (events - lag(events)) / lag(events) * 100
+  ) %>%
+  filter(abs(pct_change) > 50) %>%
+  select(YEAR, events, pct_change)
+
+```
+
+```{r}
+# Storm Summary statistics
+severity_summary <- state_storm_summary %>%
+  arrange(desc(total_events)) %>%
+  slice_head(n = 10) %>%
+  mutate(
+    severity_label = case_when(
+      pct_severe > 5 ~ "High Severity",
+      pct_severe > 2 ~ "Moderate Severity",
+      TRUE ~ "Low Severity"
+    )
+  ) %>%
+  select(region, total_events, severe_events, pct_severe, total_deaths, severity_label)
+print(severity_summary)
+```
+
+```{r}
+# Additional analysis: Which states have highest proportion of severe events?
+high_severity_states <- state_storm_summary %>%
+  arrange(desc(pct_severe)) %>%
+  slice_head(n = 10) %>%
+  select(region, total_events, pct_severe, total_deaths)
+
+print(high_severity_states)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
